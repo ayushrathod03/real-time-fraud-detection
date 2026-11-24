@@ -2,9 +2,8 @@
 
 A low-latency fraud detection pipeline built with **FastAPI**, **SQLite**, and **XGBoost**. The active pipeline scores concurrent transaction streams via a multi-worker FastAPI REST service and persists predictions and latency telemetry to SQLite.
 
-> **Note on Scope & Data**
-> - **Synthetic Dataset:** Models are trained and evaluated on a synthetic imbalanced dataset generated with `sklearn.datasets.make_classification` (not real-world financial records).
-> - **Active Stack vs. Planned Upgrade:** The implemented and benchmarked pipeline runs on **FastAPI + SQLite + XGBoost** (`scripts/local_benchmark.py`). Scaffolding for **Apache Kafka**, **PostgreSQL**, and **Docker Compose** (`streaming/`, `sql/`, `docker-compose.yml`) is included in the repository as a drafted future upgrade path, not as part of the benchmarked runtime.
+> **Note on Stack**
+> The implemented and benchmarked pipeline runs on **FastAPI + SQLite + XGBoost** (`scripts/local_benchmark.py`). Scaffolding for **Apache Kafka**, **PostgreSQL**, and **Docker Compose** (`streaming/`, `sql/`, `docker-compose.yml`) is included in the repository as a drafted future upgrade path, not as part of the benchmarked runtime.
 
 ## System Architecture
 
@@ -18,27 +17,27 @@ A low-latency fraud detection pipeline built with **FastAPI**, **SQLite**, and *
 
 ## Dataset
 
-- **Source:** Synthetic imbalanced dataset generated via `sklearn.datasets.make_classification` matching the Kaggle Credit Card Fraud schema (`Time`, `V1`–`V28`, `Amount`, `Class`), with **284,807 total rows** and **0.172% positive class prevalence**.
-- **Split:** Stratified 80/20 train-test split (**227,845** train / **56,962** test rows), with `StandardScaler` fit strictly on the training set.
+- **Source:** [Kaggle Credit Card Fraud Detection dataset (`mlg-ulb/creditcardfraud`)](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud), containing **284,807** real European cardholder transactions across **30 numerical features** (`Time`, `V1`–`V28` PCA components, `Amount`) with **492 fraud cases** (**0.172%** positive class prevalence).
+- **Split:** Stratified 80/20 train-test split (**227,845** train / **56,962** test rows; **98** fraud cases in test), with `StandardScaler` fit strictly on the training set to prevent data leakage.
 
 ## Model Metrics (Holdout Test Set, Threshold = 0.50)
 
 | Model | Precision | Recall | F1-Score | PR-AUC | 1-Row Inference Latency |
 | --- | --- | --- | --- | --- | --- |
-| Logistic Regression (Baseline, `class_weight="balanced"`) | 0.0059 | 0.7719 | 0.0117 | 0.0154 | 0.133 ms |
-| XGBoost (Final, `scale_pos_weight` tuned) | 0.3780 | 0.4211 | 0.3983 | 0.3673 | 0.982 ms |
+| Logistic Regression (Baseline, `class_weight="balanced"`) | 0.0610 | 0.9184 | 0.1144 | 0.7190 | 0.154 ms |
+| XGBoost (Final, `scale_pos_weight` tuned) | 0.8632 | 0.8367 | 0.8497 | 0.8809 | 0.753 ms |
 
-With `class_weight="balanced"` (~580x minority penalty), the linear baseline over-predicted fraud (77.2% recall at 0.59% precision). XGBoost cut false positives significantly, improving PR-AUC from `0.0154` to `0.3673` and F1 from `0.0117` to `0.3983`.
+While the cost-weighted linear baseline achieved **91.84%** recall, it suffered from a **93.9%** false-positive rate (`0.0610` precision). Tuned XGBoost increased precision by **14.1x** (`0.0610` → `0.8632`), lifted F1-score from `0.1144` to `0.8497`, and improved PR-AUC by **+22.5%** (`0.7190` → `0.8809`) at `0.753 ms` single-row inference latency.
 
 ## System Throughput & Latency
 
-Measured with a **4-worker Uvicorn FastAPI + Local SQLite Stream** (`scripts/local_benchmark.py`) across **2,000 concurrent test transactions** (8 worker threads, 4 flagged fraud):
+Measured with a **4-worker Uvicorn FastAPI + Local SQLite Stream** (`scripts/local_benchmark.py`) across **2,000 concurrent holdout test transactions** (8 worker threads):
 
 | Metric | Value |
 | --- | --- |
-| Sustained Throughput | 325.3 transactions/sec (TPS) |
-| Standalone API p50 Latency | 4.90 ms |
-| End-to-End Pipeline Latency (p50 / p95) | 19.22 ms / 36.89 ms |
+| Sustained Throughput | 348.8 transactions/sec (TPS) |
+| Standalone API p50 Latency | 5.04 ms |
+| End-to-End Pipeline Latency (p50 / p95) | 18.69 ms / 37.66 ms |
 
 ## Hardware & Environment
 
@@ -82,7 +81,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-2. *(Optional)* Retrain the models and regenerate `data/creditcard.csv` + `data/test_transactions.csv` (`data/creditcard.csv` is excluded from Git due to GitHub's 100 MB file limit):
+2. *(Optional)* To retrain the models on the real dataset, download `creditcard.csv` from [Kaggle (`mlg-ulb/creditcardfraud`)](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) into `data/creditcard.csv` (`data/creditcard.csv` is excluded from Git due to GitHub's 100 MB file limit; if missing, `train.py` falls back to generating a synthetic dataset):
 
 ```bash
 python scripts/train.py
