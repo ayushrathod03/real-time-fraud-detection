@@ -1,0 +1,18 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large raw dataset (>100 MB GitHub limit; regenerate via scripts/train.py)
+data/creditcard.csv
+
+# Local benchmark SQLite database
+fraud_predictions.db
+
+# Environment & IDE files
+.env
+.DS_Store
